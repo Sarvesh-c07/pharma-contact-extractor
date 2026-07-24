@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pharma Contact Extractor</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --ink: #1c2733; --muted: #64748b;
+    --brand: #0b6e4f; --brand-dark: #095c42; --line: #e2e8f0; --danger: #b42318;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--ink);
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 60px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+  h1 { font-size: 26px; margin: 0; }
+  h1 small { display: block; font-size: 14px; font-weight: 400; color: var(--muted); margin-top: 4px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(16,24,40,.04);
+  }
+  .btn {
+    display: inline-block; border: 0; border-radius: 8px; padding: 11px 20px;
+    font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none;
+    background: var(--brand); color: #fff;
+  }
+  .btn:hover { background: var(--brand-dark); }
+  .btn.secondary { background: #eef2f6; color: var(--ink); }
+  .btn.secondary:hover { background: #e2e8f0; }
+  .btn.danger { background: #fff; color: var(--danger); border: 1px solid #f1c0bb; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  label { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 6px; }
+  textarea, input[type=text], input[type=number] {
+    width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    font-size: 14px; font-family: inherit; background: #fbfcfe;
+  }
+  textarea { min-height: 74px; resize: vertical; }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .pill { font-size: 13px; background: #eef7f3; color: var(--brand-dark); border-radius: 99px; padding: 4px 12px; font-weight: 600; }
+  .bar { height: 10px; background: #e8edf3; border-radius: 99px; overflow: hidden; margin: 12px 0 6px; }
+  .bar > div { height: 100%; width: 0%; background: var(--brand); border-radius: 99px; transition: width .6s; }
+  .stats { display: flex; gap: 28px; flex-wrap: wrap; margin-top: 10px; }
+  .stat b { font-size: 22px; display: block; }
+  .stat span { font-size: 13px; color: var(--muted); }
+  .error { color: var(--danger); font-weight: 600; margin-top: 10px; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td.subject { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+  th { background: #f8fafc; position: sticky; top: 0; font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  .hidden { display: none; }
+  footer { color: var(--muted); font-size: 12.5px; margin-top: 30px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>💊 Pharma Contact Extractor
+      <small>Scan a Gmail account for pharma-related conversations and build a contact list</small>
+    </h1>
+    <div id="who" class="hidden row">
+      <span class="pill" id="whoEmail"></span>
+      <button class="btn danger" onclick="logout()">Disconnect</button>
+    </div>
+  </header>
+
+  <!-- signed-out -->
+  <div id="landing" class="card hidden">
+    <h2 style="margin-top:0">Connect your Gmail to begin</h2>
+    <p>The app reads your mailbox (read-only — it can never send, change or delete anything),
+       finds every conversation matching your pharma keywords, and extracts the people on those
+       emails: address, name, company, whether you wrote to them or they wrote to you, dates and
+       message counts. When it finishes, download everything as a spreadsheet (CSV).</p>
+    <a class="btn" href="/auth/google">Connect Gmail</a>
+    <p class="hint" id="landingError"></p>
+  </div>
+
+  <!-- signed-in -->
+  <div id="appui" class="hidden">
+    <div class="card">
+      <h2 style="margin-top:0">Scan settings</h2>
+      <label for="kw">Keywords (an email matches if it contains any of these)</label>
+      <textarea id="kw"></textarea>
+      <div class="hint">Separate with commas. Use quotes for phrases, e.g. "cold chain".</div>
+
+      <label for="own">Your own company domains (these addresses are skipped)</label>
+      <input type="text" id="own" placeholder="e.g. 3scorporation.com">
+      <div class="hint">Separate with commas. Your signed-in address is always skipped automatically.</div>
+
+      <div class="row" style="margin-top:14px">
+        <label style="margin:0; font-weight:400"><input type="checkbox" id="spam" checked> Also search spam &amp; trash</label>
+        <span style="flex:1"></span>
+        <button class="btn" id="startBtn" onclick="startScan()">Start scan</button>
+        <button class="btn secondary hidden" id="stopBtn" onclick="stopScan()">Stop</button>
+      </div>
+    </div>
+
+    <div class="card hidden" id="progressCard">
+      <div class="row">
+        <h2 style="margin:0">Progress</h2>
+        <span class="pill" id="stateLabel">running</span>
+      </div>
+      <div class="bar"><div id="barFill"></div></div>
+      <div class="hint" id="barHint"></div>
+      <div class="stats">
+        <div class="stat"><b id="statScanned">0</b><span>emails scanned</span></div>
+        <div class="stat"><b id="statContacts">0</b><span>contacts found</span></div>
+        <div class="stat"><b id="statTime">0:00</b><span>elapsed</span></div>
+      </div>
+      <div class="error hidden" id="scanError"></div>
+      <div class="row" style="margin-top:16px">
+        <a class="btn" href="/api/export.csv" id="dlBtn">Download CSV</a>
+        <span class="hint">Keep this tab open while scanning — the scan runs on the server but
+          the free hosting sleeps if nobody is connected.</span>
+      </div>
+    </div>
+
+    <div class="card hidden" id="tableCard">
+      <h2 style="margin-top:0">Top contacts <span class="hint" id="tableNote"></span></h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>Email</th><th>Name</th><th>Company</th><th>Direction</th>
+            <th>First seen</th><th>Last seen</th><th>Msgs</th><th>Last subject</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Read-only Gmail access · Nothing is stored on the server after you disconnect —
+    download your CSV when the scan finishes. Use exported contacts responsibly:
+    bulk cold-emailing harvested addresses may violate anti-spam laws (GDPR, CAN-SPAM).
+  </footer>
+</div>
+
+<script>
+let polling = null;
+let scanStart = 0;
+
+async function api(path, opts) {
+  const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+  return res.json();
+}
+
+function show(id, on) { document.getElementById(id).classList.toggle('hidden', !on); }
+function $(id) { return document.getElementById(id); }
+
+async function init() {
+  const me = await api('/api/me');
+  const err = new URLSearchParams(location.search).get('error');
+  if (!me.email) {
+    show('landing', true);
+    if (err) $('landingError').textContent =
+      err === 'signin_failed' ? 'Sign-in failed — please try again.' :
+      'Google sign-in was cancelled (' + err + ').';
+    return;
+  }
+  $('whoEmail').textContent = me.email;
+  show('who', true);
+  show('appui', true);
+  if (!$('kw').value) $('kw').value = me.defaults.keywords.join(', ');
+  const prog = await api('/api/progress');
+  if (prog.state && prog.state !== 'idle') { attachProgress(prog); }
+}
+
+function parseList(text) {
+  // split on commas that are not inside double quotes
+  const out = [];
+  let cur = '', inQ = false;
+  for (const ch of text) {
+    if (ch === '"') { inQ = !inQ; cur += ch; }
+    else if (ch === ',' && !inQ) { out.push(cur.trim()); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur.trim());
+  return out.filter(Boolean);
+}
+
+async function startScan() {
+  $('startBtn').disabled = true;
+  const body = {
+    keywords: parseList($('kw').value),
+    ownDomains: parseList($('own').value),
+    includeSpamTrash: $('spam').checked
+  };
+  const res = await api('/api/scan', { method: 'POST', body: JSON.stringify(body) });
+  if (res.error) { alert(res.error); $('startBtn').disabled = false; return; }
+  scanStart = Date.now();
+  attachProgress({ state: 'running', scanned: 0, contacts: 0, startedAt: scanStart });
+}
+
+function attachProgress(first) {
+  scanStart = first.startedAt || Date.now();
+  show('progressCard', true);
+  show('tableCard', true);
+  $('startBtn').disabled = first.state === 'running';
+  show('stopBtn', first.state === 'running');
+  render(first);
+  if (polling) clearInterval(polling);
+  polling = setInterval(tick, 1500);
+  tick();
+}
+
+async function tick() {
+  const p = await api('/api/progress');
+  render(p);
+  if (p.state !== 'running') {
+    clearInterval(polling); polling = null;
+    $('startBtn').disabled = false;
+    show('stopBtn', false);
+    await refreshTable();
+  } else if ((tick.n = (tick.n || 0) + 1) % 4 === 0) {
+    await refreshTable(); // refresh table every ~6s while running
+  }
+}
+
+function render(p) {
+  const labels = { running: 'Running…', done: 'Finished ✓', stopped: 'Stopped', error: 'Error', idle: 'Idle' };
+  $('stateLabel').textContent = labels[p.state] || p.state;
+  $('statScanned').textContent = (p.scanned || 0).toLocaleString();
+  $('statContacts').textContent = (p.contacts || 0).toLocaleString();
+  const secs = Math.floor(((p.finishedAt || Date.now()) - (p.startedAt || scanStart)) / 1000);
+  $('statTime').textContent = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+  const pct = p.estimate ? Math.min(99, Math.round(100 * p.scanned / Math.max(p.estimate, p.scanned))) : 0;
+  $('barFill').style.width = (p.state === 'done' ? 100 : pct) + '%';
+  $('barHint').textContent = p.estimate
+    ? 'Roughly ' + p.estimate.toLocaleString() + ' matching emails (Gmail estimate)'
+    : '';
+  show('scanError', !!p.error);
+  if (p.error) $('scanError').textContent = p.error;
+}
+
+async function refreshTable() {
+  const data = await api('/api/contacts?limit=200');
+  const tb = $('tbody');
+  tb.innerHTML = '';
+  data.rows.forEach(c => {
+    const tr = document.createElement('tr');
+    [c.email, c.name, c.domain, c.direction, c.first, c.last, c.count, c.subject].forEach((v, i) => {
+      const td = document.createElement('td');
+      if (i === 7) td.className = 'subject';
+      td.textContent = v == null ? '' : v;
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  $('tableNote').textContent = data.rows.length
+    ? '(showing top ' + data.rows.length + ' by message count — the CSV has everything)'
+    : '(no contacts yet)';
+}
+
+async function stopScan() { await api('/api/stop', { method: 'POST' }); }
+
+async function logout() {
+  await api('/api/logout', { method: 'POST' });
+  location.href = '/';
+}
+
+init();
+</script>
+</body>
+</html>
