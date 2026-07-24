@@ -450,9 +450,18 @@ async function withRetry(fn, tries = 5) {
 
 function friendlyError(err) {
   const status = err && (err.code || (err.response && err.response.status));
+  const msg = (err && err.message) || '';
+  const reason = String(
+    (err && err.errors && err.errors[0] && err.errors[0].reason) || ''
+  );
+  if (reason === 'accessNotConfigured' || /has not been used in project|api.*disabled/i.test(msg)) {
+    return 'The Gmail API is switched OFF in your Google Cloud project. Go to ' +
+      'console.cloud.google.com → APIs & Services → Library → search "Gmail API" → Enable, ' +
+      'wait 2 minutes, then click Start scan again.';
+  }
   if (status === 401) return 'Google sign-in expired — please disconnect and sign in again.';
   if (status === 403) return 'Gmail said no (permission or quota issue). Wait a bit and try again.';
-  return 'Scan failed: ' + (err && err.message ? err.message : 'unknown error');
+  return 'Scan failed: ' + (msg || 'unknown error');
 }
 
 app.listen(PORT, () => {
