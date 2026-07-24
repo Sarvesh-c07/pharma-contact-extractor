@@ -158,6 +158,7 @@ async function init() {
   if (!me.email) {
     show('landing', true);
     if (err) $('landingError').textContent =
+      err === 'not_configured' ? 'This app is not connected to Google yet — the administrator still needs to add the Google Client ID and Secret to the server settings.' :
       err === 'signin_failed' ? 'Sign-in failed — please try again.' :
       'Google sign-in was cancelled (' + err + ').';
     return;

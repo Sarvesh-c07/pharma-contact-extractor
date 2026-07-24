@@ -85,6 +85,9 @@ function makeOAuthClient() {
 //  OAuth flow
 // ------------------------------------------------------------------
 app.get('/auth/google', (req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.redirect('/?error=not_configured');
+  }
   const state = crypto.randomBytes(16).toString('hex');
   req.session.oauthState = state;
   const url = makeOAuthClient().generateAuthUrl({
